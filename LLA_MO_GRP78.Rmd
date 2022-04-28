@@ -1,0 +1,286 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+GRP78 expresion in childhood B-LLA
+ 
+by Guadalupe Rivera Torruco 
+
+
+This analysis correspond to multiparamatric cytometry bone marrow samples of childhood LLA de novo diagnosed. The stained samples were runned in  Cytoflex LX cytometer and pre-analysed in FlowJo v10.2. The cells analysed correspond to compesated Live CD45 cells.
+
+```{r Suppress warning messages}
+options(warn=-1)
+```
+
+```{r install and load R base packages}
+
+packages <- c("knitr",
+              "cowplot",
+              "ggplot2",
+              "readxl",
+              "lattice",
+              "uwot",
+              "rstudioapi",
+              "BiocManager",
+              "knitr") 
+
+for (i in packages){
+  if(!is.element(i, .packages(all.available = TRUE))){
+    install.packages(i)
+  }
+  library(i, character.only = TRUE)
+}
+```
+```{r Select figure dimensions}
+on.bioc <- TRUE
+
+# Use fig.width = 7 for html and fig.width = 6 for pdf
+fig.width <- ifelse(on.bioc, 8, 6)
+knitr::opts_chunk$set(cache = 2, cache.path = "cache/",
+                      warning = FALSE, message = FALSE, error = FALSE,
+                      fig.path = "figure/", fig.width = fig.width)
+options(width=75)
+```
+
+```{r install and load Bioconductor packages}
+packages_bioconductor <- c("CATALYST",
+                           "diffcyt",
+                           "flowCore",
+                           "scater",
+                           "flowViz",
+                           "BiocStyle")
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install(packages_bioconductor, force = TRUE, ask = FALSE)
+
+
+```
+
+
+```{r Multiload Bioconductor packages, message=FALSE}
+#Bind the lists of packages and multi-load them
+#all_packages <- c(packages, packages_bioconductor)
+
+multi_library <- function(packages){
+  for(i in packages){
+    library(i, character.only = TRUE)
+  }
+}
+
+multi_library(packages_bioconductor)
+```
+
+```{r Set working directory}
+path <- "C:/Users/lupit/OneDrive/Analisis14feb2021" #path to files
+setwd(path)
+```
+
+```{r Read Metadata file}
+md <- "LLA_MO_GRP78_metadata.xlsx"
+md <- read_excel(md)
+head(data.frame(md))
+```
+
+```{r Read de FCS files}
+#Read a flowset - multiple FCS files (when in the working directory)
+#fs <- read.flowSet(path = 'C:User/bla/bla/fullFCS', pattern = ".fcs") <- when outside directory
+
+flowset_LLA <- read.flowSet(path ="./Exports2", 
+                            pattern = '.fcs')
+
+#Compensation matrix
+Spill <- flowset_LLA@frames[["LLA_MO_MELANI_HR.fcs"]]@description$`$SPILLOVER`
+
+
+
+flowset_LLA.comp <- compensate(flowset_LLA, Spill)
+```
+We must create a csv or xlsx with the channel colnames in the FCS files and the antigen of our markers. i.e. channel FL1-A correspond to FITC channel, the antibody to recognize GRP78 is marked with FITC.
+```{r Load panel data}
+panel <- "LLA_MO_GRP78_panel_v3.xlsx"
+panel <- read_excel(panel)
+head(data.frame(panel))
+```
+We need to check if every fcs_colname is present in our flowset, if the
+panel.xslx is correct
+```{r Check prerequisites to build single cell exp (sce)}
+all(panel$fcs_colname %in% colnames(flowset_LLA))
+
+```
+```{r specify levels for conditions & sample IDs to assure desired ordering}
+
+md$condition <- factor(md$condition, levels = c("Standard risk", "High risk"))
+md$sample_id <- factor(md$sample_id, levels = 
+                             md$sample_id[order(md$condition)])
+```
+```{r Construct sce}
+sce <- prepData(flowset_LLA, panel, md,
+                md_cols = list(file = "file_name", id = "sample_id",
+                               factors = c("condition", "LLA_id")))
+```
+After creating sce experiment we can see some diagnostic plots. If we want
+to save it as pdf we can use:
+pdf(file = "desired_name.pdf")
+code_to_plot
+dev.off()
+
+Expression plot help us to see homogeneity between groups and see differences between them. 
+```{r Diagnostic plots}
+plotExprs(sce, color_by = "condition", assay = "exprs")
+```
+```{r Check number of cell per sample}
+
+n_cells(sce)
+```
+
+```{r Plot number of cells, barplot}
+
+plotCounts(sce, group_by = "sample_id", color_by = "condition")
+
+```
+```{r Multi-dimensional Scaling (MDS) plot}}
+pbMDS(sce, color_by = "condition", label_by = "sample_id") 
+```
+```{r Plot-dendogram (Heatmap of the median marker expression)}
+
+plotExprHeatmap(sce, scale = "last") 
+```
+
+```{r Marker ranking based on the non-redundancy score}
+
+#pdf(file = "plotNRS.pdf")
+
+plotNRS(sce, features = "type", color_by = "condition") #ERROR
+
+#dev.off()
+
+```
+Following the exploratory analysis we will start clustering with FlowSOM and ConsensusClustering tools. We might need to set a seed, we can try different numbers:
+
+# example: set.seed(1234)
+#          set.seed(3332)
+
+when not provided with a seed, overwrite our seed using the current system time:
+set.seed(as.numeric(Sys.time()))
+
+```{r Cell population identification with FlowSOM and ConsensusClusterPlus}
+set.seed(6666)
+sce <- cluster(sce, features = "type",
+               xdim = 10, ydim = 10, maxK = 10, seed = 6666)
+```
+
+```{r Plot the entire marker expression distribution in each cluster}
+
+plotExprHeatmap(sce, features = "type", 
+                by = "cluster_id", k = "meta10", 
+                bars = TRUE, perc = TRUE) 
+```
+
+```{r Plotting abudance of each cluster by sample id}
+
+plotAbundances(sce, k = "meta10", by = "sample_id")
+
+```
+```{r plot Abundances}
+
+plotAbundances(sce, k = "meta10", by = "cluster_id")
+
+```
+
+t-SNE and UMAP based on the arcsinh-transformed expression of the 6 lineage 
+markers in the cells from the dataset. From each of the 6 samples, 1000 cells were randomly selected. Cells are colored according to the 10 cell subpopulations obtained with FlowSOM after the metaclustering step with ConsensusClusterPlus.
+
+```{r Visual representation with tSNE}
+set.seed(6666)
+sce <- runDR(sce, "TSNE", cells = 1000, features = "type")
+```
+
+```{r tSNE stratified by sample}
+plotDR(sce, "TSNE", 
+       color_by = "meta10", 
+       facet_by = "sample_id")
+```
+
+```{r tSNE stratified by condition}
+plotDR(sce, "TSNE", 
+       color_by = "meta10", 
+       facet_by = "condition")
+
+```
+
+```{r Color by single marker, split by sample}
+plotDR(sce, "TSNE", color_by = "GRP78", 
+       facet_by = "condition", 
+       ncol = 4,
+       a_pal = rev(hcl.colors(10, "Spectral")))
+```
+
+```{r Color by all markers using custom palette}
+
+plotDR(sce, "TSNE", color_by = rownames(sce), ncol = 6, 
+       a_pal = rev(hcl.colors(10, "Spectral")))
+```
+
+```{r Color by scaled expression for set of markers, split by condition}
+plotDR(sce,
+       "TSNE",
+       scale = TRUE, 
+       facet_by = "condition",
+       color_by = sample(rownames(sce), 6),
+       a_pal = rev(hcl.colors(10, "Spectral")))
+```
+
+```{r Visual representation with UMAP}
+set.seed(6666)
+sce <- runDR(sce, "UMAP", cells = 1000, features = "type")
+```
+
+```{r UMAP stratified by sample}
+plotDR(sce, "UMAP", 
+       color_by = "meta10", 
+       facet_by = "sample_id")
+```
+
+```{r UMAP stratified by condition}
+plotDR(sce, "UMAP", 
+       color_by = "meta10", 
+       facet_by = "condition")
+
+```
+
+```{r UMAP Color by single marker, split by sample}
+plotDR(sce, "UMAP", color_by = "GRP78", 
+       facet_by = "condition", 
+       ncol = 4,
+       a_pal = rev(hcl.colors(10, "Spectral")))
+```
+
+```{r UMAP Color by all markers using custom palette}
+
+plotDR(sce, "UMAP", color_by = rownames(sce), ncol = 6, 
+       a_pal = rev(hcl.colors(10, "Spectral")))
+```
+
+```{r UMAP Color by scaled expression for set of markers, split by condition}
+plotDR(sce,
+       "UMAP",
+       scale = TRUE, 
+       facet_by = "condition",
+       color_by = sample(rownames(sce), 6),
+       a_pal = rev(hcl.colors(10, "Spectral")))
+```
+
+---
+title: LLA_MO_GRP78_.R
+author: Guadalupe Rivera Torruco
+date: '2021-07-16'
+output:
+  pdf_document:
+    latex_engine: xelatex
+sansfont: Times New Roman
+
+---
