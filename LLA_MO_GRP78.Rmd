@@ -34,6 +34,7 @@ for (i in packages){
   library(i, character.only = TRUE)
 }
 ```
+
 ```{r Select figure dimensions}
 on.bioc <- TRUE
 
@@ -78,17 +79,15 @@ multi_library(packages_bioconductor)
 path <- "C:/Users/lupit/OneDrive/Analisis14feb2021" #path to files
 setwd(path)
 ```
-
+Metada file should contain the exact name of our FCS files, the group or condition they belong and both group and sample id to identify them as separate samples.
 ```{r Read Metadata file}
 md <- "LLA_MO_GRP78_metadata.xlsx"
 md <- read_excel(md)
 head(data.frame(md))
 ```
-
+Store all FCS files in one single directory with the desired name, read.flowset just need the parenting folder and the pattern, in this case '.fcs'
 ```{r Read de FCS files}
 #Read a flowset - multiple FCS files (when in the working directory)
-#fs <- read.flowSet(path = 'C:User/bla/bla/fullFCS', pattern = ".fcs") <- when outside directory
-
 flowset_LLA <- read.flowSet(path ="./Exports2", 
                             pattern = '.fcs')
 
@@ -106,11 +105,12 @@ panel <- read_excel(panel)
 head(data.frame(panel))
 ```
 We need to check if every fcs_colname is present in our flowset, if the
-panel.xslx is correct
+panel.xslx is correct.
 ```{r Check prerequisites to build single cell exp (sce)}
 all(panel$fcs_colname %in% colnames(flowset_LLA))
 
 ```
+We specify the levels for conditions or groups in our experiment as well as the ids and factors.
 ```{r specify levels for conditions & sample IDs to assure desired ordering}
 
 md$condition <- factor(md$condition, levels = c("Standard risk", "High risk"))
@@ -124,6 +124,7 @@ sce <- prepData(flowset_LLA, panel, md,
 ```
 After creating sce experiment we can see some diagnostic plots. If we want
 to save it as pdf we can use:
+
 pdf(file = "desired_name.pdf")
 code_to_plot
 dev.off()
@@ -143,20 +144,18 @@ plotCounts(sce, group_by = "sample_id", color_by = "condition")
 
 ```
 ```{r Multi-dimensional Scaling (MDS) plot}}
-pbMDS(sce, color_by = "condition", label_by = "sample_id") 
+pbMDS(sce, color_by = "condition", label_by = "sample_id") + theme(text=element_text(family="Times"))
 ```
+
 ```{r Plot-dendogram (Heatmap of the median marker expression)}
 
-plotExprHeatmap(sce, scale = "last") 
+plotExprHeatmap(sce, scale = 'last')
 ```
+
 
 ```{r Marker ranking based on the non-redundancy score}
 
-#pdf(file = "plotNRS.pdf")
-
-plotNRS(sce, features = "type", color_by = "condition") #ERROR
-
-#dev.off()
+plotNRS(sce, features = "type", color_by = "condition")
 
 ```
 Following the exploratory analysis we will start clustering with FlowSOM and ConsensusClustering tools. We might need to set a seed, we can try different numbers:
@@ -172,12 +171,28 @@ set.seed(6666)
 sce <- cluster(sce, features = "type",
                xdim = 10, ydim = 10, maxK = 10, seed = 6666)
 ```
+We selected maxk to 10, we are reducing our clusters to that number after some tests. Then we can show a expression heatmap showing the characteristics of each cluster, by default plotExprHeatmap() has a palette, but we can change this easily, R have many palettes avaible to use anytime, some examples in: https://developer.r-project.org/Blog/public/2019/04/01/hcl-based-color-palettes-in-grdevices/ and https://www.datanovia.com/en/blog/top-r-color-palettes-to-know-for-great-data-visualization/
 
+However, we can create a custom palette to color our plots as follows:
+
+```{r custom palette}
+c_palette <- c("#FAB0F5", #pink
+               "#009BFF", #blue
+               "#0EA946", #green
+               "#FF007C", #magenta
+               "#00FFF0", #cyan
+               "#FEE35A", #yellow
+               "#FF7F00", #orange
+               "#9A43BD", #violet
+               "red",
+               "brown")
+```
 ```{r Plot the entire marker expression distribution in each cluster}
 
 plotExprHeatmap(sce, features = "type", 
                 by = "cluster_id", k = "meta10", 
-                bars = TRUE, perc = TRUE) 
+                bars = TRUE, perc = TRUE,
+                k_pal = c_palette)
 ```
 
 ```{r Plotting abudance of each cluster by sample id}
@@ -202,13 +217,16 @@ sce <- runDR(sce, "TSNE", cells = 1000, features = "type")
 ```{r tSNE stratified by sample}
 plotDR(sce, "TSNE", 
        color_by = "meta10", 
-       facet_by = "sample_id")
+       facet_by = "sample_id",
+       k_pal = c_palette)
 ```
 
 ```{r tSNE stratified by condition}
 plotDR(sce, "TSNE", 
        color_by = "meta10", 
-       facet_by = "condition")
+       facet_by = "condition",
+       k_pal = c_palette)
+
 
 ```
 
@@ -242,13 +260,15 @@ sce <- runDR(sce, "UMAP", cells = 1000, features = "type")
 ```{r UMAP stratified by sample}
 plotDR(sce, "UMAP", 
        color_by = "meta10", 
-       facet_by = "sample_id")
+       facet_by = "sample_id",
+       k_pal = c_palette)
 ```
 
 ```{r UMAP stratified by condition}
 plotDR(sce, "UMAP", 
        color_by = "meta10", 
-       facet_by = "condition")
+       facet_by = "condition",
+       k_pal = c_palette)
 
 ```
 
