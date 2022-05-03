@@ -1,4 +1,4 @@
-R analysis of FCS files
+# R analysis of FCS files
 
 FCS acquisition was made with a Cytoflex LX Cytometer and preprocessing was made in CytExpert2.0 to remove debris and doublets events. LiveCD45+ cells from each sample were gated and exported as FCS files.
 
